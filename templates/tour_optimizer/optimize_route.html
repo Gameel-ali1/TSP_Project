@@ -5,275 +5,108 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Optimize Route - Tour Optimizer</title>
     {% load static %}
-    <style>
-        body {
-            font-family: Arial, sans-serif;
-            max-width: 800px;
-            margin: 50px auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .container {
-            background-color: white;
-            padding: 30px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-        }
-        h1 {
-            color: #333;
-            margin-bottom: 30px;
-        }
-        .form-group {
-            margin-bottom: 20px;
-        }
-        label {
-            display: block;
-            margin-bottom: 5px;
-            font-weight: bold;
-            color: #555;
-        }
-        input[type="text"],
-        textarea {
-            width: 100%;
-            padding: 10px;
-            border: 1px solid #ddd;
-            border-radius: 4px;
-            font-size: 14px;
-            box-sizing: border-box;
-        }
-        textarea {
-            min-height: 150px;
-            resize: vertical;
-        }
-        .checkbox-group {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        input[type="checkbox"] {
-            width: auto;
-        }
-        button {
-            background-color: #007bff;
-            color: white;
-            padding: 12px 24px;
-            border: none;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 16px;
-            margin-top: 10px;
-        }
-        button:hover {
-            background-color: #0056b3;
-        }
-        button:disabled {
-            background-color: #ccc;
-            cursor: not-allowed;
-        }
-        .help-text {
-            font-size: 12px;
-            color: #666;
-            margin-top: 5px;
-        }
-        .results {
-            margin-top: 30px;
-            padding: 20px;
-            background-color: #f8f9fa;
-            border-radius: 4px;
-            display: none;
-        }
-        .results.show {
-            display: block;
-        }
-        .error {
-            color: #dc3545;
-            background-color: #f8d7da;
-            padding: 15px;
-            border-radius: 4px;
-            margin-top: 20px;
-        }
-        .route-list {
-            list-style: none;
-            padding: 0;
-        }
-        .route-list li {
-            padding: 8px;
-            margin: 5px 0;
-            background-color: white;
-            border-left: 3px solid #007bff;
-            padding-left: 15px;
-        }
-        .route-list li:first-child {
-            font-weight: bold;
-            color: #007bff;
-        }
-        .distance {
-            font-size: 18px;
-            font-weight: bold;
-            color: #28a745;
-            margin-top: 15px;
-        }
-        .loading {
-            display: none;
-            text-align: center;
-            margin-top: 20px;
-        }
-        .loading.show {
-            display: block;
-        }
-    </style>
+    
+    <!-- Custom CSS -->
+    <link rel="stylesheet" href="{% static 'css/optimize_route.css' %}">
 </head>
 <body>
     <div class="container">
-        <h1>Tour Route Optimizer</h1>
-        
-        <form id="optimizeForm">
-            {% csrf_token %}
-            
-            <div class="form-group">
-                <label for="starting_location">Starting Location *</label>
-                <input 
-                    type="text" 
-                    id="starting_location" 
-                    name="starting_location" 
-                    placeholder="e.g., Cairo, Egypt or New York, NY"
-                    required
-                >
-                <div class="help-text">Enter the city or address where your tour begins. For international cities, use "City, Country" format (e.g., "Cairo, Egypt", "Paris, France", "Tokyo, Japan")</div>
-            </div>
-            
-            <div class="form-group">
-                <label for="city_list">Cities to Visit *</label>
-                <textarea 
-                    id="city_list" 
-                    name="city_list" 
-                    placeholder="Enter cities, one per line or comma-separated:&#10;London, UK&#10;Paris, France&#10;Rome, Italy"
-                    required
-                ></textarea>
-                <div class="help-text">Enter city names, one per line or separated by commas. Supports international cities worldwide. Use "City, Country" format for best results.</div>
-            </div>
-            
-            <div class="form-group">
-                <div class="checkbox-group">
-                    <input 
-                        type="checkbox" 
-                        id="return_to_start" 
-                        name="return_to_start" 
-                        checked
-                    >
-                    <label for="return_to_start" style="display: inline; font-weight: normal;">
-                        Return to starting location
-                    </label>
-                </div>
-            </div>
-            
-            <button type="submit" id="submitBtn">Optimize Route</button>
-        </form>
-        
-        <div class="loading" id="loading">
-            <p>Calculating optimal route... This may take a moment.</p>
+        <div class="header">
+            <h1>Tour Route Optimizer</h1>
+            <p>Find the shortest route to visit all your destinations</p>
         </div>
         
-        <div class="error" id="error" style="display: none;"></div>
-        
-        <div class="results" id="results">
-            <h2>Optimized Route</h2>
-            <ul class="route-list" id="routeList"></ul>
-            <div class="distance" id="totalDistance"></div>
-            <div style="margin-top: 20px;">
-                <h3>Route Data (JSON):</h3>
-                <pre id="jsonData" style="background-color: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto;"></pre>
+        <div class="content">
+            <div class="form-section">
+                <h2>Plan Your Route</h2>
+                
+                <form id="optimizeForm" data-optimize-url="{% url 'tour_optimizer:optimize_route' %}">
+                    {% csrf_token %}
+                    
+                    <div class="form-group">
+                        <label for="starting_location">Starting Location *</label>
+                        <input 
+                            type="text" 
+                            id="starting_location" 
+                            name="starting_location" 
+                            placeholder="e.g., Cairo, Egypt or New York, NY"
+                            required
+                        >
+                        <div class="help-text">Enter the city or address where your tour begins. For international cities, use "City, Country" format (e.g., "Cairo, Egypt", "Paris, France", "Tokyo, Japan")</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="city_list">Cities to Visit *</label>
+                        <textarea 
+                            id="city_list" 
+                            name="city_list" 
+                            placeholder="Enter cities, one per line or comma-separated:&#10;London, UK&#10;Paris, France&#10;Rome, Italy"
+                            required
+                        ></textarea>
+                        <div class="help-text">Enter city names, one per line or separated by commas. Supports international cities worldwide. Use "City, Country" format for best results.</div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <div class="checkbox-group">
+                            <input 
+                                type="checkbox" 
+                                id="return_to_start" 
+                                name="return_to_start" 
+                                checked
+                            >
+                            <label for="return_to_start">
+                                Return to starting location
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="algorithm">Route Optimization Method *</label>
+                        <select 
+                            id="algorithm" 
+                            name="algorithm" 
+                            required
+                        >
+                            <option value="approximate">Sort by Nearest City</option>
+                            <option value="exact">Minimize Overall Cost</option>
+                        </select>
+                        <div class="help-text" id="algorithm-description">
+                            Visits the closest unvisited city at each step. Fast and works for any number of cities. Great for quick planning, though may not always find the absolute shortest route.
+                        </div>
+                    </div>
+                    
+                    <button type="submit" id="submitBtn">🚀 Optimize Route</button>
+                </form>
+                
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p>Calculating optimal route... This may take a moment.</p>
+                </div>
+                
+                <div class="error" id="error"></div>
+            </div>
+            
+            <div class="results-section">
+                <h2>Route Results</h2>
+                
+                <div class="results" id="results">
+                    <div class="route-info">
+                        <ul class="route-list" id="routeList"></ul>
+                        <div class="distance" id="totalDistance"></div>
+                    </div>
+                    
+                    <div class="graph-container">
+                        <div id="routeGraph"></div>
+                    </div>
+                </div>
             </div>
         </div>
     </div>
 
-    <script>
-        const form = document.getElementById('optimizeForm');
-        const submitBtn = document.getElementById('submitBtn');
-        const loading = document.getElementById('loading');
-        const error = document.getElementById('error');
-        const results = document.getElementById('results');
-        const routeList = document.getElementById('routeList');
-        const totalDistance = document.getElementById('totalDistance');
-        const jsonData = document.getElementById('jsonData');
-
-        form.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            
-            // Reset UI
-            error.style.display = 'none';
-            results.classList.remove('show');
-            loading.classList.add('show');
-            submitBtn.disabled = true;
-            
-            // Get form data
-            const formData = new FormData(form);
-            const data = {
-                starting_location: formData.get('starting_location'),
-                city_list: formData.get('city_list'),
-                return_to_start: formData.get('return_to_start') === 'on'
-            };
-            
-            try {
-                // Get CSRF token from cookie
-                function getCookie(name) {
-                    let cookieValue = null;
-                    if (document.cookie && document.cookie !== '') {
-                        const cookies = document.cookie.split(';');
-                        for (let i = 0; i < cookies.length; i++) {
-                            const cookie = cookies[i].trim();
-                            if (cookie.substring(0, name.length + 1) === (name + '=')) {
-                                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
-                                break;
-                            }
-                        }
-                    }
-                    return cookieValue;
-                }
-                const csrftoken = getCookie('csrftoken');
-                
-                const response = await fetch('{% url "tour_optimizer:optimize_route" %}', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRFToken': csrftoken
-                    },
-                    body: JSON.stringify(data)
-                });
-                
-                const result = await response.json();
-                
-                loading.classList.remove('show');
-                submitBtn.disabled = false;
-                
-                if (!response.ok || result.error) {
-                    error.textContent = result.error || 'An error occurred';
-                    error.style.display = 'block';
-                    return;
-                }
-                
-                // Display results
-                routeList.innerHTML = '';
-                result.route.forEach((location, index) => {
-                    const li = document.createElement('li');
-                    li.textContent = `${index + 1}. ${location}`;
-                    routeList.appendChild(li);
-                });
-                
-                totalDistance.textContent = `Total Distance: ${result.total_distance} km`;
-                
-                jsonData.textContent = JSON.stringify(result, null, 2);
-                
-                results.classList.add('show');
-                
-            } catch (err) {
-                loading.classList.remove('show');
-                submitBtn.disabled = false;
-                error.textContent = 'Network error: ' + err.message;
-                error.style.display = 'block';
-            }
-        });
-    </script>
+    <!-- D3.js for graph visualization -->
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    
+    <!-- Custom JS -->
+    <script src="{% static 'js/optimize_route.js' %}"></script>
 </body>
 </html>
-
