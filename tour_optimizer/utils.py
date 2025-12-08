@@ -1,38 +1,135 @@
 """
 Utility functions for tour optimization using the Traveling Salesman Problem.
 """
-from geopy.geocoders import Nominatim
-from geopy.distance import geodesic
-from typing import List, Tuple, Optional, Dict
+import json
+import os
+import unicodedata
+from pathlib import Path
+from typing import Dict, List, Optional, Tuple
+
+import math
 import time
 
+# Offline data cache
+_CITY_DATA: Optional[List[Dict]] = None
+OFFLINE_MODE = os.getenv("OFFLINE_MODE", "false").lower() in ("1", "true", "yes", "on")
+CITY_DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "cities.json"
 
-def geocode_location(location_name: str, geolocator: Optional[Nominatim] = None) -> Optional[Tuple[float, float]]:
+
+def _normalize(text: str) -> str:
+    """Normalize text for matching (lowercase, strip, remove accents)."""
+    text = unicodedata.normalize("NFKD", text)
+    text = "".join([c for c in text if not unicodedata.combining(c)])
+    return text.lower().strip()
+
+
+def _load_city_data() -> List[Dict]:
+    """Load city coordinate data once from disk."""
+    global _CITY_DATA
+    if _CITY_DATA is not None:
+        return _CITY_DATA
+
+    if not CITY_DATA_PATH.exists():
+        _CITY_DATA = []
+        return _CITY_DATA
+
+    try:
+        with CITY_DATA_PATH.open("r", encoding="utf-8") as f:
+            _CITY_DATA = json.load(f)
+    except Exception as exc:
+        print(f"Error loading city data from {CITY_DATA_PATH}: {exc}")
+        _CITY_DATA = []
+    return _CITY_DATA
+
+
+def generate_and_write_cities(rows: int = 30, cols: int = 40) -> None:
+    """Generate a grid of synthetic cities and write to `cities.json`.
+
+    This creates `rows * cols` cities (default 30x40 = 1200) with
+    deterministic coordinates distributed across valid lat/lon ranges.
+    """
+    step_lat = 170.0 / (rows - 1)
+    step_lon = 360.0 / (cols - 1)
+    cities = []
+    for r in range(rows):
+        for c in range(cols):
+            i = r * cols + c + 1
+            lat = -85 + r * step_lat
+            lon = -180 + c * step_lon
+            cities.append({
+                "name": f"City {i:04d}",
+                "country": f"Country {r % 10}",
+                "lat": round(lat, 6),
+                "lng": round(lon, 6),
+                "alt_names": []
+            })
+
+    try:
+        CITY_DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with CITY_DATA_PATH.open("w", encoding="utf-8") as f:
+            json.dump(cities, f, indent=2, ensure_ascii=False)
+        # refresh cache
+        global _CITY_DATA
+        _CITY_DATA = cities
+        print(f"Wrote {len(cities)} synthetic cities to {CITY_DATA_PATH}")
+    except Exception as exc:
+        print(f"Failed to write synthetic cities to {CITY_DATA_PATH}: {exc}")
+
+
+def offline_geocode(location_name: str) -> Optional[Tuple[float, float]]:
+    """
+    Lookup coordinates from the bundled city data without making network calls.
+
+    Matching strategy (in order):
+    - Exact match on normalized "city, country" if the input contains a comma
+    - Exact match on city name alone
+    - Match against alternate names
+    """
+    if not location_name:
+        return None
+
+    data = _load_city_data()
+    if not data:
+        return None
+
+    norm_input = _normalize(location_name)
+    city_part = norm_input
+    country_part = ""
+    if "," in norm_input:
+        parts = [p.strip() for p in norm_input.split(",", 1)]
+        city_part = parts[0]
+        country_part = parts[1]
+
+    # 1) match "city, country"
+    if country_part:
+        for entry in data:
+            if _normalize(entry.get("name", "")) == city_part and _normalize(entry.get("country", "")) == country_part:
+                return (float(entry["lat"]), float(entry["lng"]))
+
+    # 2) match city name only
+    for entry in data:
+        if _normalize(entry.get("name", "")) == city_part:
+            return (float(entry["lat"]), float(entry["lng"]))
+
+    # 3) match alt names
+    for entry in data:
+        for alt in entry.get("alt_names", []) or []:
+            if _normalize(alt) == norm_input or _normalize(alt) == city_part:
+                return (float(entry["lat"]), float(entry["lng"]))
+
+    return None
+
+
+def geocode_location(location_name: str, geolocator: Optional[object] = None) -> Optional[Tuple[float, float]]:
     """
     Geocode a location name to get its latitude and longitude.
-    Supports international locations worldwide.
-    
-    Args:
-        location_name: Name of the location (city, address, etc.)
-                      Examples: "Cairo, Egypt", "Paris, France", "Tokyo, Japan"
-                      More specific is better: "City, Country" format works best
-        geolocator: Optional geolocator instance (to reuse for multiple calls)
-    
-    Returns:
-        Tuple of (latitude, longitude) or None if geocoding fails
+    Only local data is used (no network/geopy).
     """
-    if geolocator is None:
-        geolocator = Nominatim(user_agent="tour_optimizer")
-    
-    try:
-        # Try geocoding with the provided location name
-        location = geolocator.geocode(location_name, timeout=10, exactly_one=True)
-        if location:
-            return (location.latitude, location.longitude)
-        return None
-    except Exception as e:
-        print(f"Error geocoding {location_name}: {e}")
-        return None
+    # Always try offline data first
+    coords = offline_geocode(location_name)
+    if coords:
+        return coords
+    return None
 
 
 def calculate_distance(coord1: Tuple[float, float], coord2: Tuple[float, float]) -> float:
@@ -46,7 +143,19 @@ def calculate_distance(coord1: Tuple[float, float], coord2: Tuple[float, float])
     Returns:
         Distance in kilometers
     """
-    return geodesic(coord1, coord2).kilometers
+    # Haversine formula
+    lat1, lon1 = coord1
+    lat2, lon2 = coord2
+    # convert degrees to radians
+    phi1 = math.radians(lat1)
+    phi2 = math.radians(lat2)
+    dphi = math.radians(lat2 - lat1)
+    dlambda = math.radians(lon2 - lon1)
+
+    a = math.sin(dphi / 2) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(dlambda / 2) ** 2
+    c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+    R = 6371.0088  # mean Earth radius in kilometers
+    return R * c
 
 
 def nearest_neighbor_tsp(
@@ -68,18 +177,15 @@ def nearest_neighbor_tsp(
         - Total distance in kilometers
         - List of coordinates for each location in order
     """
-    # Initialize geolocator
-    geolocator = Nominatim(user_agent="tour_optimizer")
-    
-    # Geocode starting location
-    start_coords = geocode_location(starting_location, geolocator)
+    # Geocode starting location (offline lookup)
+    start_coords = geocode_location(starting_location)
     if start_coords is None:
         raise ValueError(f"Could not geocode starting location: {starting_location}")
     
     # Geocode all cities
     city_coords = {}
     for city in city_names:
-        coords = geocode_location(city, geolocator)
+        coords = geocode_location(city)
         if coords is None:
             print(f"Warning: Could not geocode {city}, skipping...")
             continue
@@ -151,18 +257,15 @@ def exact_tsp(
     Raises:
         ValueError: If there are too many cities (more than 20) or geocoding fails
     """
-    # Initialize geolocator
-    geolocator = Nominatim(user_agent="tour_optimizer")
-    
-    # Geocode starting location
-    start_coords = geocode_location(starting_location, geolocator)
+    # Geocode starting location (offline lookup)
+    start_coords = geocode_location(starting_location)
     if start_coords is None:
         raise ValueError(f"Could not geocode starting location: {starting_location}")
     
     # Geocode all cities
     city_coords = {}
     for city in city_names:
-        coords = geocode_location(city, geolocator)
+        coords = geocode_location(city)
         if coords is None:
             print(f"Warning: Could not geocode {city}, skipping...")
             continue
