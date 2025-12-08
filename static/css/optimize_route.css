@@ -508,57 +508,45 @@ button:disabled {
     position: relative;
 }
 
-#routeGraph {
-    width: 100%;
-    height: 100%;
-    position: relative;
+/* Fullscreen graph adjustments */
+.graph-container.fullscreen {
+    position: fixed !important;
+    top: 0;
+    left: 0;
+    width: 100% !important;
+    height: 100% !important;
+    z-index: 9999;
+    border-radius: 0 !important;
+    margin: 0 !important;
+    padding: 20px;
+    background: rgba(0,0,0,0.95);
+    display: flex;
+    flex-direction: column;
 }
 
-#routeGraph svg {
-    width: 100%;
-    height: 100%;
-    display: block;
+/* Fullscreen button */
+.fullscreen-btn {
+    position: absolute;
+    top: 12px;
+    right: 12px;
+    z-index: 10010;
+    background: rgba(255,255,255,0.08);
+    color: #ffffff;
+    border: 1px solid rgba(255,255,255,0.12);
+    padding: 8px 12px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 16px;
+    backdrop-filter: blur(8px);
 }
 
-.node {
-    cursor: move;
+.fullscreen-btn:hover {
+    background: rgba(255,255,255,0.16);
+    transform: translateY(-2px);
 }
 
-.node circle {
-    transition: r 0.2s ease;
-    filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.3));
-}
-
-.node:hover circle {
-    r: 40;
-    filter: brightness(1.2) drop-shadow(0 4px 12px rgba(0, 0, 0, 0.4));
-}
-
-.link-label {
-    pointer-events: none;
-    user-select: none;
-}
-
-/* Graph styling for black/white theme */
-#routeGraph .links line {
-    stroke: rgba(255, 255, 255, 0.4);
-    stroke-width: 2;
-}
-
-#routeGraph .link-label {
-    fill: rgba(255, 255, 255, 0.7);
-    font-size: 11px;
-}
-
-/* City name labels below nodes are white */
-#routeGraph .node text.city-name {
-    fill: #ffffff;
-}
-
-/* Rank numbers inside nodes are black on white circles */
-#routeGraph .node text.rank-number {
-    fill: #000000 !important;
-}
+/* Graph controls and inline graph styling removed from optimize page.
+   Route visualization moved to `/view-graph/` where dedicated styles apply. */
 
 /* Responsive Design */
 @media (max-width: 968px) {

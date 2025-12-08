@@ -6,6 +6,39 @@ import json
 from .utils import nearest_neighbor_tsp, exact_tsp
 
 
+@require_http_methods(["GET", "POST"])
+def view_graph(request):
+    """Render an animated view of a calculated route.
+
+    This view expects a POST with a `route_data` form field containing
+    a JSON string produced by the optimize response. It will render a
+    page that animates the path. GET will render a small instructions
+    page explaining how to open the view (or show an error).
+    """
+    if request.method == 'POST':
+        route_data_raw = request.POST.get('route_data') or request.POST.get('data')
+        if not route_data_raw:
+            return render(request, 'tour_optimizer/view_graph.html', {
+                'error': 'No route data provided. Please open the view via the "Watch Graph" button.'
+            })
+
+        try:
+            parsed = json.loads(route_data_raw)
+        except Exception as e:
+            return render(request, 'tour_optimizer/view_graph.html', {
+                'error': f'Invalid route data: {e}'
+            })
+
+        # Pass JSON safely to template
+        route_json = json.dumps(parsed)
+        return render(request, 'tour_optimizer/view_graph.html', {
+            'route_json': route_json
+        })
+
+    # GET: show instructions
+    return render(request, 'tour_optimizer/view_graph.html', {})
+
+
 def index(request):
     """Home page view."""
     return render(request, 'tour_optimizer/index.html')

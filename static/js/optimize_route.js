@@ -1,8 +1,6 @@
-// Initialize graph variables
-let routeGraph = null;
+// Minimal graph state (no inline graph rendering in optimize page)
 let graphSvg = null;
-let graphNodes = [];
-let graphLinks = [];
+let zoomBehavior = null;
 
 // Check if D3.js is available
 if (typeof d3 === 'undefined') {
@@ -45,232 +43,32 @@ function clearGraph() {
     }
     graphNodes = [];
     graphLinks = [];
+    graphLayer = null;
+    zoomBehavior = null;
 }
 
-// Display route as a graph
-function displayRouteGraph(routeData) {
-    // Check if D3.js is loaded
-    if (typeof d3 === 'undefined') {
-        console.error('D3.js is not loaded. Please ensure D3.js is included in the page.');
-        const container = document.getElementById('routeGraph');
-        if (container) {
-            container.innerHTML = '<div style="padding: 20px; text-align: center; color: #dc3545;">Error: D3.js library is not loaded. Please refresh the page.</div>';
-        }
-        return;
-    }
-    
-    clearGraph();
-    
-    if (!routeData.coordinates || routeData.coordinates.length === 0) {
-        return;
-    }
-    
-    const coordinates = routeData.coordinates;
-    const route = routeData.route;
-    
-    // Get container dimensions
-    const container = document.getElementById('routeGraph');
-    if (!container) return;
-    
-    // Use actual container size
-    const containerRect = container.getBoundingClientRect();
-    const width = containerRect.width || 600;
-    const height = containerRect.height || 500;
-    
-    // Remove existing SVG
-    d3.select('#routeGraph').selectAll('svg').remove();
-    
-    // Create SVG with viewBox for responsiveness
-    graphSvg = d3.select('#routeGraph')
-        .append('svg')
-        .attr('width', width)
-        .attr('height', height)
-        .attr('viewBox', `0 0 ${width} ${height}`)
-        .attr('preserveAspectRatio', 'xMidYMid meet');
-    
-    // Create nodes (cities) - handle duplicates when returning to start
-    graphNodes = route.map((cityName, index) => {
-        const isStart = index === 0;
-        const isEnd = index === coordinates.length - 1 && 
-                     route.length > 1 && 
-                     route[0] === route[route.length - 1] &&
-                     index === coordinates.length - 1;
-        
-        // For duplicate cities (return to start), show both but mark appropriately
-        const nodeId = isEnd && route[0] === route[route.length - 1] && index === route.length - 1 
-            ? `end-${index}` 
-            : index;
-        
-        return {
-            id: nodeId,
-            originalIndex: index,
-            name: cityName,
-            rank: index + 1,
-            isStart: isStart,
-            isEnd: isEnd && !isStart,
-            x: width / 2 + (Math.random() - 0.5) * 100,
-            y: height / 2 + (Math.random() - 0.5) * 100
-        };
-    });
-    
-    // Create links (edges) with distances
-    graphLinks = [];
-    for (let i = 0; i < coordinates.length - 1; i++) {
-        const distance = calculateDistance(coordinates[i], coordinates[i + 1]);
-        graphLinks.push({
-            source: graphNodes[i],
-            target: graphNodes[i + 1],
-            distance: distance.toFixed(1)
-        });
-    }
-    
-    // Create force simulation with better layout
-    const simulation = d3.forceSimulation(graphNodes)
-        .force('link', d3.forceLink(graphLinks).id(d => d.id).distance(d => {
-            // Adjust distance based on actual route distance
-            return 120 + Math.min(parseFloat(d.distance) / 10, 80);
-        }))
-        .force('charge', d3.forceManyBody().strength(-400))
-        .force('center', d3.forceCenter(width / 2, height / 2))
-        .force('collision', d3.forceCollide().radius(70))
-        .alphaDecay(0.05);
-    
-    // Create edges (links) - black and white theme
-    const link = graphSvg.append('g')
-        .attr('class', 'links')
-        .selectAll('line')
-        .data(graphLinks)
-        .enter()
-        .append('line')
-        .attr('stroke', 'rgba(255, 255, 255, 0.5)')
-        .attr('stroke-width', 2)
-        .attr('stroke-opacity', 0.6)
-        .attr('marker-end', 'url(#arrowhead)');
-    
-    // Add arrow marker for directed edges
-    graphSvg.append('defs').append('marker')
-        .attr('id', 'arrowhead')
-        .attr('viewBox', '0 -5 10 10')
-        .attr('refX', 25)
-        .attr('refY', 0)
-        .attr('markerWidth', 6)
-        .attr('markerHeight', 6)
-        .attr('orient', 'auto')
-        .append('path')
-        .attr('d', 'M0,-5L10,0L0,5')
-        .attr('fill', 'rgba(255, 255, 255, 0.5)');
-    
-    // Add distance labels on edges
-    const linkLabels = graphSvg.append('g')
-        .attr('class', 'link-labels')
-        .selectAll('text')
-        .data(graphLinks)
-        .enter()
-        .append('text')
-        .attr('class', 'link-label')
-        .attr('text-anchor', 'middle')
-        .attr('font-size', '11px')
-        .attr('fill', 'rgba(255, 255, 255, 0.8)')
-        .attr('font-weight', '500')
-        .text(d => d.distance + ' km');
-    
-    // Create nodes (cities)
-    const node = graphSvg.append('g')
-        .attr('class', 'nodes')
-        .selectAll('g')
-        .data(graphNodes)
-        .enter()
-        .append('g')
-        .attr('class', 'node')
-        .call(d3.drag()
-            .on('start', dragstarted)
-            .on('drag', dragged)
-            .on('end', dragended));
-    
-    // Add circles for nodes - black and white theme
-    node.append('circle')
-        .attr('r', 35)
-        .attr('fill', d => {
-            if (d.isStart) return '#ffffff'; // White for start
-            if (d.isEnd) return '#ffffff'; // White for end
-            return '#ffffff'; // White for all nodes
-        })
-        .attr('stroke', d => {
-            if (d.isStart) return '#000000'; // Black border for start
-            if (d.isEnd) return '#000000'; // Black border for end
-            return '#000000'; // Black border for intermediate
-        })
-        .attr('stroke-width', d => {
-            if (d.isStart || d.isEnd) return 4; // Thicker border for start/end
-            return 3; // Normal border for intermediate
-        })
-        .attr('opacity', 0.95);
-    
-    // Add rank number - black text on white background
-    node.append('text')
-        .attr('class', 'rank-number')
-        .attr('text-anchor', 'middle')
-        .attr('dy', 5)
-        .attr('font-size', '16px')
-        .attr('font-weight', 'bold')
-        .attr('fill', '#000000')
-        .attr('stroke', 'none')
-        .text(d => d.rank);
-    
-    // Add city name labels
-    node.append('text')
-        .attr('class', 'city-name')
-        .attr('text-anchor', 'middle')
-        .attr('dy', 55)
-        .attr('font-size', '12px')
-        .attr('font-weight', '500')
-        .attr('fill', '#ffffff')
-        .text(d => {
-            // Truncate long names
-            const maxLength = 15;
-            return d.name.length > maxLength ? d.name.substring(0, maxLength) + '...' : d.name;
-        });
-    
-    // Add tooltips
-    node.append('title')
-        .text(d => `${d.rank}. ${d.name}`);
-    
-    // Update positions on simulation tick
-    simulation.on('tick', () => {
-        link
-            .attr('x1', d => d.source.x)
-            .attr('y1', d => d.source.y)
-            .attr('x2', d => d.target.x)
-            .attr('y2', d => d.target.y);
-        
-        linkLabels
-            .attr('x', d => (d.source.x + d.target.x) / 2)
-            .attr('y', d => (d.source.y + d.target.y) / 2);
-        
-        node.attr('transform', d => `translate(${d.x},${d.y})`);
-    });
-    
-    // Drag functions
-    function dragstarted(event, d) {
-        if (!event.active) simulation.alphaTarget(0.3).restart();
-        d.fx = d.x;
-        d.fy = d.y;
-    }
-    
-    function dragged(event, d) {
-        d.fx = event.x;
-        d.fy = event.y;
-    }
-    
-    function dragended(event, d) {
-        if (!event.active) simulation.alphaTarget(0);
-        d.fx = null;
-        d.fy = null;
-    }
+// Inline route graph rendering removed from optimize page.
+// The detailed graph renderer was moved to the separate `/view-graph/` page.
+
+// No-op re-render helper (inline renderer removed)
+function rerenderLastRoute() {
+    // intentionally empty; re-rendering happens on the `/view-graph/` page
 }
 
 // Handle form submission
 document.addEventListener('DOMContentLoaded', function() {
+    // Ensure no leftover SVG or HTML remains from previous sessions or cached scripts
+    try {
+        const rg = document.getElementById('routeGraph');
+        if (rg) {
+            rg.innerHTML = '';
+            if (typeof d3 !== 'undefined') d3.select('#routeGraph').selectAll('svg').remove();
+        }
+        const watchBtnInit = document.getElementById('watchGraphBtn');
+        if (watchBtnInit) watchBtnInit.style.display = 'none';
+    } catch (e) {
+        // ignore
+    }
     const form = document.getElementById('optimizeForm');
     const submitBtn = document.getElementById('submitBtn');
     const loading = document.getElementById('loading');
@@ -357,8 +155,36 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="algorithm-info">Method: ${algorithmText}</div>
             `;
             
-            // Display route as graph
-            displayRouteGraph(result);
+            // Inline graph rendering removed: enable 'Watch Graph' button instead.
+
+            // Enable Watch Graph button (posts the route to /view-graph/)
+            const watchBtn = document.getElementById('watchGraphBtn');
+            if (watchBtn) {
+                // ensure visible and use a consistent display mode
+                watchBtn.style.display = 'inline-block';
+                // remove previous listeners by cloning
+                const newBtn = watchBtn.cloneNode(true);
+                watchBtn.parentNode.replaceChild(newBtn, watchBtn);
+                newBtn.addEventListener('click', () => {
+                    const form = document.createElement('form');
+                    form.method = 'POST';
+                    form.action = '/view-graph/';
+                    form.target = '_blank';
+                    // CSRF
+                    const csrf = getCookie('csrftoken');
+                    if (csrf) {
+                        const inpCsrf = document.createElement('input'); inpCsrf.type = 'hidden'; inpCsrf.name = 'csrfmiddlewaretoken'; inpCsrf.value = csrf; form.appendChild(inpCsrf);
+                    }
+                    const inp = document.createElement('input');
+                    inp.type = 'hidden';
+                    inp.name = 'route_data';
+                    inp.value = JSON.stringify(result);
+                    form.appendChild(inp);
+                    document.body.appendChild(form);
+                    form.submit();
+                    form.remove();
+                });
+            }
             
             // Show results
             results.classList.add('show');
@@ -381,5 +207,191 @@ document.addEventListener('DOMContentLoaded', function() {
             console.error('Error details:', err);
         }
     });
+
+    // Zoom control buttons
+    const zoomInBtn = document.getElementById('zoomIn');
+    const zoomOutBtn = document.getElementById('zoomOut');
+    const resetZoomBtn = document.getElementById('resetZoom');
+    if (zoomInBtn) {
+        zoomInBtn.addEventListener('click', (ev) => {
+            ev.preventDefault();
+            try {
+                console.debug('Zoom In clicked', { graphSvg, zoomBehavior });
+                if (graphSvg && zoomBehavior) {
+                    // Try standard D3 zoom scaleBy first
+                    try {
+                        graphSvg.transition().duration(300).call(zoomBehavior.scaleBy, 1.2);
+                        return;
+                    } catch (e) {
+                        console.warn('zoomBehavior.scaleBy failed, falling back to manual transform', e);
+                    }
+
+                    // Manual fallback: compute new transform around center
+                    const svgNode = graphSvg.node();
+                    const rect = svgNode.getBoundingClientRect();
+                    const centerX = rect.width / 2;
+                    const centerY = rect.height / 2;
+                    const t = d3.zoomTransform(svgNode);
+                    const scaleFactor = 1.2;
+                    const minK = 0.2;
+                    const maxK = 6;
+                    let newK = Math.max(minK, Math.min(maxK, t.k * scaleFactor));
+                    // compute new x/y so that center remains visually centered
+                    const newX = t.x - (centerX) * (newK / t.k - 1);
+                    const newY = t.y - (centerY) * (newK / t.k - 1);
+                    const newTransform = d3.zoomIdentity.translate(newX, newY).scale(newK);
+                    graphSvg.transition().duration(300).call(zoomBehavior.transform, newTransform);
+                }
+            } catch (err) {
+                console.warn('Zoom in failed', err);
+            }
+        });
+    }
+    if (zoomOutBtn) {
+        zoomOutBtn.addEventListener('click', (ev) => {
+            ev.preventDefault();
+            try {
+                console.debug('Zoom Out clicked', { graphSvg, zoomBehavior });
+                if (graphSvg && zoomBehavior) {
+                    try {
+                        graphSvg.transition().duration(300).call(zoomBehavior.scaleBy, 1 / 1.2);
+                        return;
+                    } catch (e) {
+                        console.warn('zoomBehavior.scaleBy failed (out), falling back to manual transform', e);
+                    }
+
+                    const svgNode = graphSvg.node();
+                    const rect = svgNode.getBoundingClientRect();
+                    const centerX = rect.width / 2;
+                    const centerY = rect.height / 2;
+                    const t = d3.zoomTransform(svgNode);
+                    const scaleFactor = 1 / 1.2;
+                    const minK = 0.2;
+                    const maxK = 6;
+                    let newK = Math.max(minK, Math.min(maxK, t.k * scaleFactor));
+                    const newX = t.x - (centerX) * (newK / t.k - 1);
+                    const newY = t.y - (centerY) * (newK / t.k - 1);
+                    const newTransform = d3.zoomIdentity.translate(newX, newY).scale(newK);
+                    graphSvg.transition().duration(300).call(zoomBehavior.transform, newTransform);
+                }
+            } catch (err) {
+                console.warn('Zoom out failed', err);
+            }
+        });
+    }
+    if (resetZoomBtn) {
+        resetZoomBtn.addEventListener('click', (ev) => {
+            ev.preventDefault();
+            try {
+                if (graphSvg && zoomBehavior) {
+                    graphSvg.transition().duration(350).call(zoomBehavior.transform, d3.zoomIdentity);
+                }
+            } catch (err) {
+                console.warn('Reset zoom failed', err);
+            }
+        });
+    }
+
+    // Fullscreen button handling
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    const graphContainer = document.querySelector('.graph-container');
+    if (fullscreenBtn && graphContainer) {
+        // Cross-browser helpers for entering/exiting fullscreen
+        const enterFullscreen = (el) => {
+            if (el.requestFullscreen) return el.requestFullscreen();
+            if (el.webkitRequestFullscreen) return el.webkitRequestFullscreen();
+            if (el.mozRequestFullScreen) return el.mozRequestFullScreen();
+            if (el.msRequestFullscreen) return el.msRequestFullscreen();
+            // Not supported: apply CSS fallback
+            el.classList.add('fullscreen');
+            rerenderLastRoute();
+            return Promise.resolve();
+        };
+
+        const exitFullscreen = () => {
+            if (document.exitFullscreen) return document.exitFullscreen();
+            if (document.webkitExitFullscreen) return document.webkitExitFullscreen();
+            if (document.mozCancelFullScreen) return document.mozCancelFullScreen();
+            if (document.msExitFullscreen) return document.msExitFullscreen();
+            // Not supported: remove CSS fallback
+            graphContainer.classList.remove('fullscreen');
+            rerenderLastRoute();
+            return Promise.resolve();
+        };
+
+        // Helper to detect if element is fullscreen across vendors
+        const isElementFullscreen = (el) => {
+            return document.fullscreenElement === el || document.webkitFullscreenElement === el || document.mozFullScreenElement === el || document.msFullscreenElement === el;
+        };
+
+        fullscreenBtn.addEventListener('click', async (ev) => {
+            ev.preventDefault();
+            // Diagnostics: log available fullscreen methods
+            console.debug('Fullscreen support:', {
+                requestFullscreen: !!graphContainer.requestFullscreen,
+                webkitRequestFullscreen: !!graphContainer.webkitRequestFullscreen,
+                mozRequestFullScreen: !!graphContainer.mozRequestFullScreen,
+                msRequestFullscreen: !!graphContainer.msRequestFullscreen,
+                exitFullscreen: !!document.exitFullscreen,
+                webkitExitFullscreen: !!document.webkitExitFullscreen,
+                mozCancelFullScreen: !!document.mozCancelFullScreen,
+                msExitFullscreen: !!document.msExitFullscreen
+            });
+
+            // Try the normal fullscreen flow; if it fails, open a popout window as fallback
+            try {
+                if (!isElementFullscreen(graphContainer)) {
+                    await enterFullscreen(graphContainer);
+                    return;
+                } else {
+                    await exitFullscreen();
+                    return;
+                }
+            } catch (err) {
+                console.warn('requestFullscreen failed, falling back to popout. Error:', err);
+            }
+
+            // Popout fallback: clone the current SVG into a new window
+            try {
+                const popup = window.open('', '_blank', 'noopener,noreferrer,width=1200,height=800');
+                if (!popup) {
+                    alert('Unable to open fullscreen or popout window (popup blocked). Please allow popups or try a different browser.');
+                    return;
+                }
+
+                const svgContainer = document.getElementById('routeGraph');
+                const inner = svgContainer ? svgContainer.innerHTML : '';
+                const html = `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Route Graph</title>
+                    <style>body{margin:0;background:#000;color:#fff} #routeGraph{width:100%;height:100vh;display:block} svg{width:100%;height:100vh;display:block}</style>
+                    </head><body><div id="routeGraph">${inner}</div>
+                    <div style="position:fixed;top:8px;right:8px;z-index:9999"><button onclick="window.close()" style="padding:8px 12px;border-radius:8px;">Close</button></div>
+                    </body></html>`;
+
+                popup.document.open();
+                popup.document.write(html);
+                popup.document.close();
+            } catch (err) {
+                console.error('Popout fallback failed:', err);
+                // Final fallback: toggle CSS class
+                graphContainer.classList.toggle('fullscreen');
+                rerenderLastRoute();
+            }
+        });
+
+        // Keep CSS class in sync with fullscreen changes (standard + vendor prefixed events)
+        const fsChangeHandler = () => {
+            if (isElementFullscreen(graphContainer)) {
+                graphContainer.classList.add('fullscreen');
+            } else {
+                graphContainer.classList.remove('fullscreen');
+            }
+            rerenderLastRoute();
+        };
+
+        document.addEventListener('fullscreenchange', fsChangeHandler);
+        document.addEventListener('webkitfullscreenchange', fsChangeHandler);
+        document.addEventListener('mozfullscreenchange', fsChangeHandler);
+        document.addEventListener('MSFullscreenChange', fsChangeHandler);
+    }
 });
 
