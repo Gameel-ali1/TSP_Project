@@ -2,6 +2,7 @@ document.addEventListener('DOMContentLoaded', function() {
   const container = document.getElementById('viewGraph');
   const playBtn = document.getElementById('playBtn');
   const pauseBtn = document.getElementById('pauseBtn');
+  const replayBtn = document.getElementById('replayBtn');
   const speedRange = document.getElementById('speedRange');
   const uniformBtn = document.getElementById('uniformLayoutBtn');
 
@@ -80,7 +81,8 @@ document.addEventListener('DOMContentLoaded', function() {
   // Precompute node positions and label sizes so we can resolve collisions before drawing
   function computeAllPositions(){
     const sizeScale = Math.max(8, Math.min(24, Math.round(600 / points.length) + 6));
-    const fontSize = Math.max(10, Math.min(20, Math.round(sizeScale * 0.9)));
+    // use a slightly smaller label font than before and avoid bold by default to make space for distances
+    const fontSize = Math.max(9, Math.min(18, Math.round(sizeScale * 0.8)));
     for (let i=0;i<points.length;i++){
       const p = points[i];
       let label = p.name && p.name.length ? p.name : `${i+1}`;
@@ -133,7 +135,8 @@ document.addEventListener('DOMContentLoaded', function() {
     g.append('text').text(String(index+1)).attr('dy','0.35em').attr('text-anchor','middle').attr('fill','#000').attr('font-size', numFont).attr('font-weight','700');
     // position label based on precomputed labelY if available (city name)
     const labelY = (pos.labelY !== undefined) ? pos.labelY : (pos.sizeScale + Math.round((pos.fontSize||14)/1.5));
-    g.append('text').text(pos.label).attr('y', labelY).attr('text-anchor','middle').attr('fill','#fff').attr('font-size',pos.fontSize||14).attr('font-weight','600');
+    // city name: slightly smaller and not bold so distances fit better
+    g.append('text').text(pos.label).attr('y', labelY).attr('text-anchor','middle').attr('fill','#fff').attr('font-size',pos.fontSize||14).attr('font-weight','400');
     nodePositions[index] = Object.assign({}, pos, { _drawn: true });
     return { g, x: pos.x, y: pos.y };
   }
@@ -247,7 +250,8 @@ document.addEventListener('DOMContentLoaded', function() {
   // animation control state
   let playing = false;
   let speed = parseFloat(speedRange.value) || 1;
-  let currentIndex = 0;
+  // edge-based playback state (we iterate edges so final edge can return to start without creating a duplicate node)
+  let currentEdgeIndex = 0;
   let isUniform = false;
   let uniformSimulation = null;
 
@@ -314,17 +318,73 @@ document.addEventListener('DOMContentLoaded', function() {
     return R * c;
   }
 
+  // Build edge list so we can handle closing the loop back to the start without creating a duplicate node
+  const lastIsStart = points.length > 1 && Math.abs(points[0].lat - points[points.length-1].lat) < 1e-6 && Math.abs(points[0].lng - points[points.length-1].lng) < 1e-6;
+  const edges = [];
+  for (let i=0;i<points.length-1;i++) edges.push([i, i+1]);
+  if (lastIsStart && edges.length > 0) {
+    // replace the final edge's target with the start index (so final edge goes back to index 0)
+    edges[edges.length-1][1] = 0;
+  }
+
+  // animate one edge given explicit from/to indices
+  function animateEdge(fromIndex, toIndex){
+    return new Promise((resolve) => {
+      const a = points[fromIndex];
+      const b = points[toIndex];
+      const apos = nodePositions[fromIndex] || {x: xScale(a.lng), y: yScale(a.lat)};
+      const bpos = nodePositions[toIndex] || {x: xScale(b.lng), y: yScale(b.lat)};
+      const ax = apos.x, ay = apos.y;
+      const bx = bpos.x, by = bpos.y;
+
+      // draw edge (line) faded in as we move
+      const line = edgeLayer.append('line')
+        .attr('x1', ax).attr('y1', ay).attr('x2', ax).attr('y2', ay)
+        .attr('stroke','rgba(255,255,255,0.4)').attr('stroke-width', Math.max(2, Math.round(Math.max(2, 14 - points.length/10)) )).attr('stroke-linecap','round');
+
+      const realKm = haversineKm(a.lat, a.lng, b.lat, b.lng);
+      const distText = edgeLayer.append('text')
+        .attr('x', (ax+bx)/2).attr('y', (ay+by)/2)
+        .attr('fill', 'rgba(255,255,255,0.9)')
+        .attr('font-size', Math.max(10, Math.min(16, Math.round((600/points.length)+8))))
+        .attr('font-weight', '600')
+        .attr('text-anchor', 'middle')
+        .text(realKm.toFixed(1) + ' km');
+
+      const distance = Math.hypot(bx-ax, by-ay);
+      const baseMs = Math.max(400, Math.min(6000, distance*6));
+      const duration = baseMs / speed;
+
+      let start = null;
+      function step(ts){
+        if (!playing) { start = null; requestAnimationFrame(step); return; }
+        if (!start) start = ts;
+        const t = Math.min(1, (ts - start)/duration);
+        const cx = ax + (bx-ax)*t;
+        const cy = ay + (by-ay)*t;
+        traveller.attr('cx', cx).attr('cy', cy);
+        // extend line
+        line.attr('x2', cx).attr('y2', cy);
+        // update distance label to current midpoint
+        const mx = (ax + cx) / 2; const my = (ay + cy) / 2;
+        distText.attr('x', mx).attr('y', my - 6);
+        if (t < 1) requestAnimationFrame(step);
+        else resolve();
+      }
+      requestAnimationFrame(step);
+    });
+  }
+
   async function playSequence(){
-    if (currentIndex >= points.length-1) return;
+    if (currentEdgeIndex >= edges.length) return;
     playing = true;
-    while (playing && currentIndex < points.length-1){
-      const next = currentIndex+1;
-      // draw next node (so nodes appear one-by-one)
-      drawNode(next);
-      // animate traveller along the segment
-      await animateTo(next);
-      currentIndex = next;
-      // small pause between nodes
+    while (playing && currentEdgeIndex < edges.length){
+      const [fromIdx, toIdx] = edges[currentEdgeIndex];
+      // draw target node only if it's not the start (to avoid creating duplicate start node)
+      if (!(toIdx === 0 && lastIsStart)) drawNode(toIdx);
+      await animateEdge(fromIdx, toIdx);
+      currentEdgeIndex++;
+      // small pause between edges
       await new Promise(r => setTimeout(r, 250));
     }
     playing = false;
@@ -336,6 +396,30 @@ document.addEventListener('DOMContentLoaded', function() {
     }
   });
   pauseBtn.addEventListener('click', ()=>{ playing = false; });
+
+  // reset playback state and UI so animation can replay from the start
+  function resetPlayback(){
+    // clear drawn edges and labels
+    edgeLayer.selectAll('*').remove();
+    // remove drawn nodes and mark them as not-drawn so they'll be recreated (except we'll redraw first)
+    nodeLayer.selectAll('g.node').remove();
+    for (let i=0;i<nodePositions.length;i++){
+      if (nodePositions[i]) nodePositions[i]._drawn = false;
+    }
+    // reset traveller and draw first node
+    const first = drawNode(0);
+    traveller.attr('cx', first.x).attr('cy', first.y);
+    currentEdgeIndex = 0;
+    playing = false;
+  }
+
+  if (replayBtn){
+    replayBtn.addEventListener('click', ()=>{
+      resetPlayback();
+      // small timeout so DOM settles, then start playback
+      setTimeout(()=>{ playSequence(); }, 120);
+    });
+  }
   // (Linear layout removed) Uniform Links used instead.
 
   // Uniform Links: use a D3 force simulation to make every link length uniform (pixel length)
