@@ -79,23 +79,7 @@ document.addEventListener('DOMContentLoaded', function() {
     
     if (!form) return;
     
-    // Handle algorithm select description update
-    const algorithmSelect = document.getElementById('algorithm');
-    const algorithmDescription = document.getElementById('algorithm-description');
-    
-    const algorithmDescriptions = {
-        'approximate': 'Visits the closest unvisited city at each step. Fast and works for any number of cities. Great for quick planning, though may not always find the absolute shortest route.',
-        'exact': 'Calculates the absolute shortest route by comparing all possible paths. Guarantees the minimum total distance. Best for up to 20 cities. Takes longer to calculate but gives the optimal result.'
-    };
-    
-    if (algorithmSelect && algorithmDescription) {
-        algorithmSelect.addEventListener('change', function() {
-            algorithmDescription.textContent = algorithmDescriptions[this.value] || '';
-        });
-        
-        // Set initial description
-        algorithmDescription.textContent = algorithmDescriptions[algorithmSelect.value] || '';
-    }
+
     
     form.addEventListener('submit', async (e) => {
         e.preventDefault();
@@ -108,12 +92,10 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Get form data
         const formData = new FormData(form);
-        const algorithm = formData.get('algorithm') || 'approximate';
         const data = {
             starting_location: formData.get('starting_location'),
             city_list: formData.get('city_list'),
-            return_to_start: formData.get('return_to_start') === 'on',
-            algorithm: algorithm
+            return_to_start: formData.get('return_to_start') === 'on'
         };
         
         try {
@@ -148,11 +130,9 @@ document.addEventListener('DOMContentLoaded', function() {
                 routeList.appendChild(li);
             });
             
-            // Display total distance and algorithm used
-            const algorithmText = result.algorithm_used === 'exact' ? 'Minimize Overall Cost' : 'Sort by Nearest City';
+            // Display total distance
             totalDistance.innerHTML = `
                 <div class="distance-value">Total Distance: ${result.total_distance} km</div>
-                <div class="algorithm-info">Method: ${algorithmText}</div>
             `;
             
             // Inline graph rendering removed: enable 'Watch Graph' button instead.

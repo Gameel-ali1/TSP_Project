@@ -3,7 +3,7 @@ from django.http import HttpResponse, JsonResponse
 from django.views.decorators.http import require_http_methods
 from django.views.decorators.csrf import ensure_csrf_cookie
 import json
-from .utils import nearest_neighbor_tsp, exact_tsp
+from .utils import nearest_neighbor_tsp
 
 
 @require_http_methods(["GET", "POST"])
@@ -77,10 +77,7 @@ def optimize_route(request):
             else:
                 return_to_start = True  # Default to True
             
-            # Handle algorithm selection - 'exact' or 'approximate' (default)
-            algorithm = data.get('algorithm', 'approximate').lower().strip()
-            if algorithm not in ['exact', 'approximate']:
-                algorithm = 'approximate'  # Default to approximate
+
             
             # Validate inputs
             if not starting_location:
@@ -107,34 +104,19 @@ def optimize_route(request):
                     'error': 'At least one city must be provided'
                 }, status=400)
             
-            # Call the appropriate optimization algorithm
-            if algorithm == 'exact':
-                try:
-                    route, total_distance, route_coords = exact_tsp(
-                        starting_location=starting_location,
-                        city_names=city_names,
-                        return_to_start=return_to_start
-                    )
-                except ValueError as e:
-                    # If exact algorithm fails (e.g., too many cities), fall back to approximate
-                    if "not practical" in str(e).lower() or "too many" in str(e).lower():
-                        return JsonResponse({
-                            'error': str(e) + ' Please use the approximate algorithm instead.'
-                        }, status=400)
-                    raise
-            else:
-                route, total_distance, route_coords = nearest_neighbor_tsp(
-                    starting_location=starting_location,
-                    city_names=city_names,
-                    return_to_start=return_to_start
-                )
+            # Call the nearest neighbor optimization algorithm
+            route, total_distance, route_coords = nearest_neighbor_tsp(
+                starting_location=starting_location,
+                city_names=city_names,
+                return_to_start=return_to_start
+            )
             
             # Prepare response data
             response_data = {
                 'success': True,
                 'route': route,
                 'total_distance': round(total_distance, 2),
-                'algorithm_used': algorithm,
+                'algorithm_used': 'approximate',
                 'coordinates': [
                     {'lat': coord[0], 'lng': coord[1]} 
                     for coord in route_coords

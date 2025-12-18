@@ -332,12 +332,6 @@ input[type="checkbox"] {
     letter-spacing: -0.5px;
 }
 
-.algorithm-info {
-    font-size: 0.9rem;
-    color: rgba(255, 255, 255, 0.7);
-    font-weight: 500;
-}
-
 button {
     background: rgba(255, 255, 255, 0.15);
     backdrop-filter: blur(10px);
