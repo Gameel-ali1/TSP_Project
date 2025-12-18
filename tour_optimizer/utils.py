@@ -163,57 +163,42 @@ def nearest_neighbor_tsp(
     city_names: List[str],
     return_to_start: bool = True
 ) -> Tuple[List[str], float, List[Tuple[float, float]]]:
-    """
-    Solve the Traveling Salesman Problem using the Nearest Neighbor algorithm.
-    
-    Args:
-        starting_location: Name of the starting location
-        city_names: List of city/location names to visit
-        return_to_start: If True, return to starting location at the end
-    
-    Returns:
-        Tuple containing:
-        - List of location names in optimized order
-        - Total distance in kilometers
-        - List of coordinates for each location in order
-    """
-    # Geocode starting location (offline lookup)
+    # sho8l coordinates el awl 
     start_coords = geocode_location(starting_location)
     if start_coords is None:
-        raise ValueError(f"Could not geocode starting location: {starting_location}")
+        raise ValueError(f"error f decoding 2bl el coodrinates check: {starting_location}")
     
-    # Geocode all cities
+    # decode el cities to coordinates 2bl ma nsht8l
     city_coords = {}
     for city in city_names:
         coords = geocode_location(city)
         if coords is None:
-            print(f"Warning: Could not geocode {city}, skipping...")
+            print(f"Coordinates error mn nearest {city}, hn3deha w check elly b3dha ")
             continue
         city_coords[city] = coords
-        # Be respectful to geocoding service - add small delay
         time.sleep(0.5)
     
     if not city_coords:
-        raise ValueError("No cities could be geocoded successfully")
+        raise ValueError("kol el cities failed in geocode, check script")
     
-    # Nearest Neighbor algorithm
-    unvisited = set(city_coords.keys())
+    # algorithm start hna 
+    unvisited = set(city_coords.keys()) # set 3shan unique value 
     route = [starting_location]
     route_coords = [start_coords]
     current_coords = start_coords
-    total_distance = 0.0
+    total_distance = 0.0 # d 3shan dubugging w front end bs 
     
-    # Visit all cities using nearest neighbor
+    # loop over unvisited cities 
     while unvisited:
         nearest_city = None
-        nearest_distance = float('inf')
+        nearest_distance = float('inf') # ebd2 nearest distance with infinite 
         
         for city in unvisited:
             distance = calculate_distance(current_coords, city_coords[city])
             if distance < nearest_distance:
                 nearest_distance = distance
                 nearest_city = city
-        
+        # append el nearest l el route w distance w change el coords w remove mn unvisited
         if nearest_city:
             route.append(nearest_city)
             route_coords.append(city_coords[nearest_city])
@@ -221,7 +206,7 @@ def nearest_neighbor_tsp(
             current_coords = city_coords[nearest_city]
             unvisited.remove(nearest_city)
     
-    # Return to starting location if requested
+    # lw option el return to start enabled hn3ml append for one more trip from current to start tany 
     if return_to_start:
         distance_to_start = calculate_distance(current_coords, start_coords)
         total_distance += distance_to_start
@@ -231,38 +216,22 @@ def nearest_neighbor_tsp(
     return route, total_distance, route_coords
 
 
+
 def exact_tsp(
     starting_location: str,
     city_names: List[str],
     return_to_start: bool = True
 ) -> Tuple[List[str], float, List[Tuple[float, float]]]:
     """
-    Solve the Traveling Salesman Problem using the Held-Karp algorithm (exact solution).
-    This uses dynamic programming to find the optimal route.
-    
-    Note: This algorithm has O(2^n * n^2) time complexity, so it's only practical
-    for small to medium-sized problems (typically up to 20 cities).
-    
-    Args:
-        starting_location: Name of the starting location
-        city_names: List of city/location names to visit
-        return_to_start: If True, return to starting location at the end
-    
-    Returns:
-        Tuple containing:
-        - List of location names in optimized order
-        - Total distance in kilometers
-        - List of coordinates for each location in order
-    
-    Raises:
-        ValueError: If there are too many cities (more than 20) or geocoding fails
+        heavy stuff hna el exact b2a 
     """
-    # Geocode starting location (offline lookup)
+    
+    # zy 2bl kda blzbt more professional errors bs considering frontend view
     start_coords = geocode_location(starting_location)
     if start_coords is None:
         raise ValueError(f"Could not geocode starting location: {starting_location}")
     
-    # Geocode all cities
+
     city_coords = {}
     for city in city_names:
         coords = geocode_location(city)
@@ -270,7 +239,7 @@ def exact_tsp(
             print(f"Warning: Could not geocode {city}, skipping...")
             continue
         city_coords[city] = coords
-        # Be respectful to geocoding service - add small delay
+
         time.sleep(0.5)
     
     if not city_coords:
@@ -278,54 +247,53 @@ def exact_tsp(
     
     num_cities = len(city_coords)
     
-    # Warn if too many cities (exact solution becomes impractical)
+    # check lw aktr mn 20 city 3sha Efficiency 
     if num_cities > 20:
         raise ValueError(
             f"Exact TSP solver is not practical for {num_cities} cities. "
             f"Please use the approximate algorithm for problems with more than 20 cities."
         )
     
-    # Build distance matrix
+    # start distance matrix hna 
     all_locations = [starting_location] + list(city_coords.keys())
     all_coords = [start_coords] + [city_coords[city] for city in city_coords.keys()]
     n = len(all_locations)
     
-    # Create distance matrix
+    # initialize distance matrix 
     dist_matrix = [[0.0] * n for _ in range(n)]
     for i in range(n):
         for j in range(n):
-            if i != j:
+            if i != j: # no need to calc distance to the cityiself so we just calc to others
                 dist_matrix[i][j] = calculate_distance(all_coords[i], all_coords[j])
     
-    # Held-Karp algorithm
     # dp[mask][last] = minimum cost to visit all cities in mask ending at last
-    # mask is a bitmask representing visited cities
-    # We'll use a dictionary for memoization
+    # initalize 
     dp: Dict[Tuple[int, int], Tuple[float, Optional[int]]] = {}
     
-    # Base case: starting at city 0 (starting_location)
-    # mask = 1 means only city 0 is visited
+    # Base case: hnbd2 mn 0 elly hya starting city 
+    # mask = 1 lw city visited 
     dp[(1, 0)] = (0.0, None)
     
-    # Fill DP table
+    # loop over masks 
     for mask in range(1, 1 << n):
-        # Only process masks that include the starting city (bit 0)
+        # ignore lw el city doesn't start with base case 
         if not (mask & 1):
             continue
             
         for last in range(n):
             if not (mask & (1 << last)):
                 continue
-                
+            
+            # mtnsa4 tskip el impossible combinatios 
             if (mask, last) not in dp:
                 continue
             
             current_cost, _ = dp[(mask, last)]
             
-            # Try visiting each unvisited city
+            #try visiting each unvisited city
             for next_city in range(n):
                 if mask & (1 << next_city):
-                    continue  # Already visited
+                    continue  # continue lw visited already 
                 
                 new_mask = mask | (1 << next_city)
                 new_cost = current_cost + dist_matrix[last][next_city]
